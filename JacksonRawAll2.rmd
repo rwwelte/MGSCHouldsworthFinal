@@ -1,0 +1,71 @@
+---
+title: "FinalProject"
+author: "Jackson Thomas"
+date: "4/22/2022"
+output: html_document
+---
+
+# Libraries
+```{r, include=FALSE}
+library(here)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(DT)
+library(data.table)
+library(forcats)
+library(sentimentr)
+library(stringr)
+library(tidytext)
+library(lubridate)
+
+```
+
+# dataset loading
+```{r}
+app_activity <- read.csv(here("Datasets", "App_activity.csv"))
+
+subscriber_information <- read.csv(here("Datasets", "Subscriber_Information.csv"))
+```
+
+#joining and cleaning
+```{r}
+subscriptionAppData <- inner_join(x = app_activity,
+                                  y = subscriber_information,
+                                  by = "ID") %>%
+  drop_na()
+
+subscriptionAppData <- subscriptionAppData %>% 
+  mutate(Subscription.Start.Date = as.Date(Subscription.Start.Date, format = "%m/%d/%Y"),
+         Subscription.Expiration= as.Date(Subscription.Expiration, format = "%m/%d/%Y"))
+
+subscriptionAppData$subscriptionLength_months <- round(as.numeric(difftime(subscriptionAppData$Subscription.Start.Date, subscriptionAppData$Subscription.Expiration, units = "days"))/(365.25/12) * -1 , 0)
+
+write_csv(subscriptionAppData, "subscriptionTEST.csv")
+
+subscriptionAppData <- subscriptionAppData %>%
+  subset(select = -c(Subscription.Start.Date, Subscription.Expiration)) %>%
+  subset(select = -c(App.Session.Date)) 
+
+
+
+subscriptionAppData <- subscriptionAppData %>% 
+  mutate(UniqueOpenRate = round(Unique.Open.Count / Send.Count, 2),
+         UniqueClickRate = round(Unique.Click.Count / Send.Count, 2))
+
+subscriptionAppData <- subscriptionAppData %>%
+  subset(select = -c(Open.Count, Click.Count))
+write_csv(subscriptionAppData, "subscriptionData.csv")
+glimpse(subscriptionAppData)
+```
+
+```{r}
+x <- read.csv(here("Datasets", "X.csv"))
+sub <- read.csv(here("Datasets", "sub.csv"))
+
+subSample <- inner_join(x, 
+                        sub, 
+                        by = "ID")
+
+```
+

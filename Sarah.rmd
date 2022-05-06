@@ -1,0 +1,304 @@
+---
+title: "MGSC410_Final_Project"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+
+library('tidyverse')
+library('ggplot2')
+library('cluster') 
+library('factoextra')
+library(rsample)
+library(ggridges)
+library(randomForest)
+library(tree)
+library(caret)
+library(rfviz)
+library(varImp)
+
+install.packages("varImp")
+
+```
+
+
+```{r}
+
+getwd()
+setwd("/Users/sarahmonthofer/Desktop/SeniorYear/MGSC\ 410/Final_Project")
+
+```
+
+## Import Files 
+
+```{r pressure, echo=FALSE}
+
+subscription_data <- read.csv("subscriptionData.csv")
+
+```
+
+## Random Forest Tree on Subsciption Data (Q4)
+- Identify the subscriber profile of those not continuing with their usage of the product and identify the barriers to deeper subscriber engagement where possible
+- Do a random forest to find which segments have low probabilities of renewing their product. 
+- Figure out what traits impact the probability to not renew a product. 
+- Run a regression model / variable influence model to figure out what the variables are in determining renewal probability
+
+https://towardsdatascience.com/random-forest-in-r-f66adf80ec9 
+```{r}
+
+subscription_data <- na.omit(subscription_data)
+
+sub_data_for_tree <- subscription_data %>% 
+  mutate(App.Session.Platform = factor(App.Session.Platform, labels = c("android", "ios", "web", "NULL", "")),
+         App.Activity.Type = factor(App.Activity.Type, labels = c("App Launch", "Start", "Completed", "Other", "NULL", "")),
+         Language = factor(Language, labels = c("EBR", "ESP", "DEU", "GLE", "ALL", "SVE", "ENG", "FRA", "ITA", "RUS", "ESC", "ARA", "POL", "FAR", "KOR", "TUR", "JPN", "NED", "CHI", "GRK", "POR", "HEB", "TGL", "HIN", "DAR", "LAT", "VIE", "URD", "IND", "KIS", "PAS")), 
+         Subscription.Type = factor(Subscription.Type, labels = c("Limited", "Limetime")),
+         Subscription.Event.Type = factor(Subscription.Event.Type, labels = c("INITIAL_PURCHASE", "RENEWAL")),
+         Purchase.Store = factor(Purchase.Store, labels = c("Web", "App")),
+         Country = factor(Country, labels = c("Other", "US/Canada", "Europe")),
+         User.Type = factor(User.Type, labels = c("Consumer", "Other")),
+         Demo.User = as.factor(Demo.User),
+         Free.Trial.User = as.factor(Free.Trial.User),
+         Auto.Renew = as.factor(Auto.Renew),
+         Email.Subscriber = as.factor(Email.Subscriber),
+         Push.Notifications = as.factor(Push.Notifications)) %>% 
+  select(-c("Currency", "Lead.Platform"))
+
+head(sub_data_for_tree)
+
+```
+```{r}
+
+summary(sub_data_for_tree)
+
+```
+
+```{r}
+
+sub_data_for_tree[ sub_data_for_tree == "?"] <- NA
+colSums(is.na(sub_data_for_tree))
+
+```
+
+```{r}
+
+data_split1 = initial_split(sub_data_for_tree, prop = 0.75)
+train = training(data_split1)
+test  = testing(data_split1)
+dim(train)
+dim(test)
+
+```
+
+Training the Random Forest 
+```{r}
+
+rf <- randomForest(
+  Subscription.Event.Type ~ .,
+  data=train
+)
+
+
+```
+https://www.statistik.uni-dortmund.de/useR-2008/slides/Strobl+Zeileis.pdf 
+```{r}
+
+obj <- randomForest(Subscription.Event.Type ~ .,
+  data=train, 
+  importance=TRUE)
+
+obj$importance
+importance(obj, type=2)
+
+
+```
+
+The higher the value of the mean decrease Gini score (also mean accuracy), the higher the importance of the variable in the model. Therefore, the important variables in predicting renewal are Purchase.Amount, subscriptionLength_months, Language, Auto.Renew, Send.Count, ID (doesnt matter tho), UniqueOpenRate, and Unique.Open.Count and so on in order in order of importance. Because these variables predict renewal they must also be important in understanding why people do not renew. 
+
+
+
+Evaluating the Random Forest 
+```{r}
+
+pred = predict(rf, newdata=test[-6])
+cm = table(test[,6], pred)
+print(cm)
+
+```
+
+
+True Positive - Predicted Initial Purchase and actual value was initial purchase - 63699
+True Negative - Predicted Renewal and actual value was Renewal - 19140
+False Negative - Predicted Renewal and actual value was initial purchase - 38
+False Positive - Predicted Renewal and actual value was initial purchase - 39
+
+https://www.r-bloggers.com/2021/07/feature-importance-in-random-forest/ 
+```{r}
+
+
+```
+
+```{r}
+plot(rf)
+```
+Adding a new Variable did they autorenew after their subscription finished and are not lifetime members - ask how to get data on 1-1 likness, ingore for now
+```{r}
+
+new_data <- read.csv("WillTheyContinue.csv")
+dim(new_data)
+```
+
+
+```{r}
+
+options(scipen=99)
+set.seed(310)
+
+data_split <- initial_split(sub_data_for_tree, prop=0.7)
+sub_train <- training(data_split)
+sub_test <- testing(data_split)
+
+sub_tree <- tree(subscriptionLength_months ~ ., data = sub_train)
+
+plot(sub_tree)
+text(sub_tree, digit=3, pretty=0)
+```
+
+```{r}
+
+print(sub_tree)
+
+```
+
+```{r}
+
+sub_tree2 <- tree(Subscription.Event.Type ~ ., data = sub_train)
+
+plot(sub_tree2)
+text(sub_tree2, digit=3, pretty=0)
+
+# O in Auto.Renewal are people who are not subscribing 
+```
+
+```{r}
+summary(sub_tree2)
+```
+The variables useful in predicting auto renewal are subscriptionLength_months, Purchase.Amount, Country, Language and Send.count. The importance of the these variables in decision making can be taken from the tree. 
+
+
+
+--- Logistic Regression Model --- 
+
+```{r}
+
+```
+
+```{r}
+
+data_split2 = initial_split(sub_data_for_tree, prop = 0.75)
+train2 = training(data_split2)
+test2  = testing(data_split2)
+
+mylogit <- glm(Subscription.Event.Type ~ ., data = train2, family = "binomial")
+
+summary(mylogit)
+
+```
+
+```{r}
+
+exp(coef(mylogit))/(1+exp(coef(mylogit)))
+# Converting log odds to probability
+
+```
+
+Variables with log odds greater than 1indicate that renewal is more likely to occur as the predictor increases. Odds ratios that are less than 1 indicate that the renewal is less likely to occur as the predictor increases. 
+
+Languages of users unlikely to renew are - LanguageCHI or Chinese, LanguagePOR or Portugese, LanguageTGL, LanguageGLE, LanguageTUR Turkish, LanguageURD, and  
+                                           LanguageKIS
+                                           
+Languages of users highly likely to renew are -  LanguageITA, LanguageESC, LanguageJPN, LanguageDAR, LanguageRUS, LanguageARA, LanguageFAR, LanguageNED, and                                                   LanguageLAT
+
+Other Variables with the largest postive impact on renewal are - Subscription.TypeLimetime (duh), subscriptionLength_months,UniqueOpenRate, Unique.Open.Count,
+                                                                 App.Activity.TypeOther, Free.Trial.User1, CountryUS/Canada, and autorenewal  
+                                                                 
+Possible Barriers for non-renewal
+- Bad Service - bc/ of variable language - most likely people are not renewing their subscription do so because Rossetta Stone does not provide a good service                to learn another language in their originial language - and bc/ CountryEurope and CountryUS/Canada - lots of these countries speak english or 
+               learn english in shcool so they probably have bad serivces for non-english speaking countries 
+- Information Spam - bc/ of varaible UniqueClickRate - too many emails uneccesary emails if lots of people aren't opening the emails content - and because of 
+               variable push notfications (1 meaning on), even tho people opt in for push notfications its correlated to more non-renweal 
+
+
+Ideas to Reduce barriers for non-renweal 
+- Enhance the services for popular languages to learn in countries that have bad service
+- Users that do the free trial are more likely to renew - maybe extent the free trial period 
+- Unique open rate has a positive impact on renewal but unique click rate has a strong negative impact on renewal - so lower the frequency of emails sent to 
+             users who are not clicking on the email but send the same or more emails to users that are clicking on the emails. 
+- also reduce push notifcations for people who arent clicking on them 
+
+
+```{r}
+
+```
+
+--- Ignore anything past here ----
+## Clustering Subscriber Data (Q2)
+Understand the subscriber segments present in each database
+- Do a clustering algorithm to identify different segments
+- Analyze the segments based on value and demographics
+
+https://towardsdatascience.com/clustering-datasets-having-both-numerical-and-categorical-variables-ed91cdca0677 
+
+observe the distribution of the numerical variables to understand if any of them need transformations, if one variable skews to the side transform the data into log odds 
+```{r}
+
+sub_data1 <- sub_data_for_tree[1:10000,]
+
+head(sub_data1)
+
+silhouette <- c()
+silhouette = c(silhouette, NA)
+for(i in 2:10){
+  pam_clusters = pam(as.matrix(gower_df),
+                 diss = TRUE,
+                 k = i)
+  silhouette = c(silhouette ,pam_clusters$silinfo$avg.width)
+}
+plot(1:10, silhouette,
+     xlab = "Clusters",
+     ylab = "Silhouette Width")
+lines(1:10, silhouette)
+
+```
+
+
+```{r}
+# ----- Key -----
+# Subscription.Type - limited = 0, unlimited = 1 
+# Subscription.Event.Type - INITIAL_PURCHASE = 0, RENEWAL = 1
+
+cluster_data <- sub_data_for_tree[1:10000,] %>% 
+  select(-c("App.Session.Platform", "App.Activity.Type", "Language", "Subscription.Type", "Subscription.Event.Type", "Purchase.Store", "User.Type", "Country"))
+
+head(cluster_data)
+
+res.dist <- get_dist(cluster_data, stand = TRUE, method = "pearson")
+
+fviz_dist(res.dist, 
+   gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+
+cluster_data <- scale(cluster_data)
+
+```
+
+
+
+
+
+```{r}
+
+
+
+```
